@@ -1,5 +1,4 @@
 import 'dart:math';
-
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -23,27 +22,26 @@ class _AnaylzePageState extends State<AnaylzePage> {
     }
 
     try {
-      final response = await supabase
+      final data = await supabase
           .from('profiles')
-          .select(
-            'pushups, squats, gender, height, weight, age',
-          ) // select only these two columns
+          .select('pushups, squats, gender, height, weight, age')
           .eq('id', user.id)
-          .single(); // only one row expected
+          .single();
 
-      final data = response;
+      print("Fetched data: $data");
+
       double pushups = (data['pushups'] ?? 0).toDouble();
       double squats = (data['squats'] ?? 0).toDouble();
-      double gender = data['gender'] == 'male' ? 1.0 : 1.5;
+      double gender = (data['gender'] == 'male') ? 1.0 : 1.5;
       double height = (data['height'] ?? 0).toDouble();
       double weight = (data['weight'] ?? 0).toDouble();
       double age = (data['age'] ?? 0).toDouble();
 
-      if ((pushups == 0 || pushups == null)) {
+      if (pushups == 0) {
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text("Do PUSHUPS")));
-      } else if ((squats == 0 || squats == null)) {
+      } else if (squats == 0) {
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text("Do SQUATS")));
@@ -53,19 +51,22 @@ class _AnaylzePageState extends State<AnaylzePage> {
         ).showSnackBar(SnackBar(content: Text("Do PUSHUPS and SQUATS")));
       }
 
-      score =
-          (((squats) * (pow(height, 0.4))) / ((age) * pow(height, 0.4))) *
-          gender;
+      // ✅ Update state variable (not local)
+      setState(() {
+        score =
+            (((squats) * pow(weight, 0.4)) /
+                ((pow(age, 0.3)) * pow(height, 0.3))) *
+            gender;
+      });
 
-      print(score);
+      print("Score: $score");
 
-      final something = await supabase
+      await supabase
           .from('profiles')
           .update({'score': score})
-          .eq('id', user.id)
-          .select()
-          .single();
-      print("Pushed to score");
+          .eq('id', user.id);
+
+      print("✅ Score updated");
     } catch (e) {
       print('Error fetching exercises: $e');
     }
@@ -77,11 +78,13 @@ class _AnaylzePageState extends State<AnaylzePage> {
     updateScore();
   }
 
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: Text("Analyze Page")),
       body: Center(
         child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Text("Your Score is $score", style: TextStyle(fontSize: 20)),
           ],

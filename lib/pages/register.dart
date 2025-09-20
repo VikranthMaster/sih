@@ -18,6 +18,7 @@ class _RegisterPageState extends State<RegisterPage> {
   TextEditingController aadharController = TextEditingController();
   TextEditingController heightController = TextEditingController();
   TextEditingController weightController = TextEditingController();
+  TextEditingController ageController = TextEditingController();
 
   final List<String> genders = ['male', 'female', 'other'];
 
@@ -31,6 +32,7 @@ class _RegisterPageState extends State<RegisterPage> {
     final password = passwordController.text;
     final passwordConfirm = passConfirm.text;
     final aadhar = aadharController.text;
+    int? age = int.tryParse(ageController.text);
     double? height = double.tryParse(heightController.text);
     double? weight = double.tryParse(weightController.text);
     bool isCoach = false;
@@ -55,6 +57,7 @@ class _RegisterPageState extends State<RegisterPage> {
         weight: weight,
         isCoach: isCoach,
         gender: selectedGender,
+        age: age,
       );
       Navigator.push(
         context,
@@ -144,6 +147,18 @@ class _RegisterPageState extends State<RegisterPage> {
                 controller: weightController,
                 decoration: InputDecoration(
                   labelText: "Weight",
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  filled: true,
+                  fillColor: Colors.white.withOpacity(0.6),
+                ),
+              ),
+              const SizedBox(height: 20),
+              TextField(
+                controller: ageController,
+                decoration: InputDecoration(
+                  labelText: "Age",
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
                   ),

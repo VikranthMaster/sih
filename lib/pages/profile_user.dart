@@ -114,7 +114,7 @@ class _ProfileUserState extends State<ProfileUser> {
 
   Widget _buildWelcomeSection() {
     final userName = userProfile?['full_name']?.toString() ?? 'User';
-    final userScore = userProfile?['score']?.toString() ?? '0';
+    final userScore = userProfile?['score']?.toStringAsFixed(3) ?? '0';
 
     return Container(
       width: double.infinity,

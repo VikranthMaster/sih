@@ -22,6 +22,7 @@ class AuthService {
     double? weight,
     required bool isCoach,
     required String gender,
+    required int? age,
   }) async {
     final response = await _supabase.auth.signUp(
       email: email,
@@ -39,6 +40,7 @@ class AuthService {
         'weight': weight,
         'gender': gender,
         'aadhar_number': aadhar,
+        'age': age,
         'created_at': DateTime.now().toIso8601String(),
       });
     } else {

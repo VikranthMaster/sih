@@ -317,7 +317,7 @@ class _LeaderboardState extends State<Leaderboard> {
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
                         Text(
-                          '${score?.toString() ?? '0'} pts',
+                          '${score?.toStringAsFixed(3) ?? '0'} pts',
                           style: TextStyle(
                             fontWeight: FontWeight.bold,
                             color: getRankColor(index),

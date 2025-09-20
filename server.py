@@ -83,21 +83,130 @@ def home():
 def detect():
     """Hand gesture detection endpoint."""
     try:
+        # Check if request has JSON data
+        if not request.is_json:
+            return jsonify({"error": "Request must contain JSON data"}), 400
+            
+        # Check if image data is provided
         if 'image' not in request.json:
             return jsonify({"error": "No image data provided"}), 400
             
-        data = request.json['image']  # base64 encoded JPEG
-        nparr = np.frombuffer(base64.b64decode(data), np.uint8)
-        frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        # Get base64 image data
+        image_data = request.json['image']
         
-        if frame is None:
-            return jsonify({"error": "Invalid image data"}), 400
+        if not image_data:
+            return jsonify({"error": "Empty image data"}), 400
+            
+        try:
+            # Decode base64 image
+            image_bytes = base64.b64decode(image_data)
+            nparr = np.frombuffer(image_bytes, np.uint8)
+            frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+            
+            if frame is None:
+                return jsonify({"error": "Could not decode image data"}), 400
+                
+        except Exception as decode_error:
+            return jsonify({"error": f"Image decoding failed: {str(decode_error)}"}), 400
         
+        # Process the frame with gesture detector
         result = detector.process_frame(frame)
-        return jsonify(result)
+        
+        # Add debug info if there's an error
+        if "error" in result:
+            print(f"Detection error: {result['error']}")
+            
+        # Return success response
+        return jsonify(result), 200
         
     except Exception as e:
-        return jsonify({"error": f"Detection failed: {str(e)}"}), 500
+        error_msg = f"Detection failed: {str(e)}"
+        print(f"Server error: {error_msg}")
+        return jsonify({
+            "error": error_msg,
+            "gesture": detector.current_prompt if detector else "unknown",
+            "detected": False
+        }), 500
+
+@app.route('/detect_debug', methods=['POST'])
+def detect_debug():
+    """Debug version of detect endpoint with more detailed logging."""
+    try:
+        print("=== DEBUG: /detect_debug called ===")
+        
+        # Log request info
+        print(f"Content-Type: {request.headers.get('Content-Type')}")
+        print(f"Request is JSON: {request.is_json}")
+        
+        if not request.is_json:
+            return jsonify({"error": "Request must contain JSON data"}), 400
+            
+        # Check image data
+        if 'image' not in request.json:
+            print("ERROR: No 'image' key in request")
+            return jsonify({"error": "No image data provided"}), 400
+            
+        image_data = request.json['image']
+        print(f"Image data length: {len(image_data) if image_data else 0}")
+        
+        if not image_data:
+            return jsonify({"error": "Empty image data"}), 400
+        
+        # Decode and process
+        try:
+            image_bytes = base64.b64decode(image_data)
+            print(f"Decoded bytes length: {len(image_bytes)}")
+            
+            nparr = np.frombuffer(image_bytes, np.uint8)
+            frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+            
+            if frame is None:
+                print("ERROR: cv2.imdecode returned None")
+                return jsonify({"error": "Could not decode image"}), 400
+                
+            print(f"Frame shape: {frame.shape}")
+            
+        except Exception as decode_error:
+            print(f"Decode error: {decode_error}")
+            return jsonify({"error": f"Decoding failed: {str(decode_error)}"}), 400
+        
+        # Process with detector
+        print(f"Current prompt: {detector.current_prompt}")
+        result = detector.process_frame(frame)
+        print(f"Detection result: {result}")
+        
+        return jsonify(result), 200
+        
+    except Exception as e:
+        error_msg = f"Debug detection failed: {str(e)}"
+        print(f"DEBUG ERROR: {error_msg}")
+        return jsonify({
+            "error": error_msg,
+            "detected": False
+        }), 500
+
+@app.route('/test_detector', methods=['GET'])
+def test_detector():
+    """Test if the gesture detector is working."""
+    try:
+        # Create a simple test image (white background)
+        test_frame = np.ones((480, 640, 3), dtype=np.uint8) * 255
+        
+        # Process with detector
+        result = detector.process_frame(test_frame)
+        
+        return jsonify({
+            "detector_status": "working",
+            "current_prompt": detector.current_prompt,
+            "test_result": result,
+            "available_prompts": detector.prompts
+        }), 200
+        
+    except Exception as e:
+        return jsonify({
+            "detector_status": "error",
+            "error": str(e)
+        }), 500
 
 @app.route('/new_prompt', methods=['GET'])
 def new_prompt():

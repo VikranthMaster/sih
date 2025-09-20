@@ -53,7 +53,7 @@ class _SquatsState extends State<Squats> with WidgetsBindingObserver {
 
   // Replace with your actual server URL for analysis
   static const String ANALYSIS_SERVER_URL =
-      'https://fc2f45216c4e.ngrok-free.app'; // Update this!
+      'https://eaaa5bdcc58d.ngrok-free.app'; // Update this!
 
   @override
   void initState() {
