@@ -91,9 +91,11 @@ class _RegisterPageState extends State<RegisterPage> {
             children: [
               const SizedBox(height: 40),
               const Text(
-                "WELCOME TO FITNESS APP TRACKER!",
+                "WELCOME TO GAME CHANGER!",
                 style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
               ),
+              const SizedBox(height: 10),
+              const Text("'Play Fair'", style: TextStyle(fontSize: 17)),
               const SizedBox(height: 40),
               TextField(
                 controller: nameController,

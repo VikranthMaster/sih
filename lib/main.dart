@@ -1,9 +1,11 @@
 import 'dart:math';
 
 import 'package:fitness/auth/auth_service.dart';
+import 'package:fitness/pages/coach.dart';
 import 'package:fitness/pages/profile.dart';
 import 'package:fitness/pages/profile_user.dart';
 import 'package:fitness/pages/register.dart';
+import 'package:fitness/pages/verification.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -55,25 +57,37 @@ class _LoginPageState extends State<LoginPage> {
         print("No logged-in user!");
         return;
       }
+
       final response = await supabase
           .from('profiles')
-          .select('isVerified')
+          .select('isVerified, role')
           .eq('id', userId);
+
       if (response.isNotEmpty) {
         isVerified = response[0]['isVerified'] as bool;
+        final role = response[0]['role'] as String?;
         print('User verified: $isVerified');
-      }
+        print('User role: $role');
 
-      if (isVerified) {
-        Navigator.push(
-          context,
-          MaterialPageRoute(builder: (context) => const ProfileUser()),
-        );
-      } else {
-        Navigator.push(
-          context,
-          MaterialPageRoute(builder: (context) => const ProfilePage()),
-        );
+        if (role == "coach") {
+          // Redirect coach to coachPage
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (context) => const CoachPage()),
+          );
+        } else if (isVerified) {
+          // Student but verified
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (context) => const ProfileUser()),
+          );
+        } else {
+          // Student but not verified
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (context) => const GesturePage()),
+          );
+        }
       }
     } catch (e) {
       if (mounted) {
@@ -101,9 +115,11 @@ class _LoginPageState extends State<LoginPage> {
             children: [
               const SizedBox(height: 40),
               const Text(
-                "WELCOME TO FITNESS TRACKER APP!",
+                "WELCOME TO GAMECHANGER!",
                 style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
               ),
+              const SizedBox(height: 10),
+              const Text("'Play Fair'", style: TextStyle(fontSize: 17)),
               const SizedBox(height: 40),
               ToggleButtons(
                 isSelected: [!isCoach, isCoach],
@@ -177,24 +193,26 @@ class _LoginPageState extends State<LoginPage> {
               const SizedBox(height: 20),
 
               // Footer Text
-              GestureDetector(
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => const RegisterPage(),
+              if (!isCoach) ...[
+                GestureDetector(
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const RegisterPage(),
+                      ),
+                    );
+                  },
+                  child: const Text(
+                    "Not a Member? Register Now",
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      decoration: TextDecoration.underline,
                     ),
-                  );
-                },
-                child: const Text(
-                  "Not a Member? Register Now",
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    decoration: TextDecoration.underline,
                   ),
                 ),
-              ),
+              ],
             ],
           ),
         ),

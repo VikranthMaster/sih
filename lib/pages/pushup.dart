@@ -143,7 +143,7 @@ class _PushupState extends State<Pushup> with WidgetsBindingObserver {
 
   // Replace with your actual server URL for analysis
   static const String ANALYSIS_SERVER_URL =
-      'https://eaaa5bdcc58d.ngrok-free.app'; // Update this!
+      'https://b28cacd6926a.ngrok-free.app'; // Update this!
 
   @override
   void initState() {

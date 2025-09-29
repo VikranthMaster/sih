@@ -1,479 +1,457 @@
 import 'dart:convert';
 import 'dart:typed_data';
-import 'dart:math';
+import 'dart:ui' as ui;
 import 'package:camera/camera.dart';
-import 'package:fitness/auth/auth_service.dart';
 import 'package:fitness/pages/profile_user.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:image/image.dart' as img;
 
-class Verification extends StatefulWidget {
-  const Verification({super.key});
+class GesturePage extends StatefulWidget {
+  const GesturePage({super.key});
 
   @override
-  State<Verification> createState() => _VerificationState();
+  State<GesturePage> createState() => _GesturePageState();
 }
 
-class _VerificationState extends State<Verification> {
-  // Update this URL or make it configurable
-  static const String BASE_URL = "https://b69caf211302.ngrok-free.app";
-  // Alternative: Use your actual server IP if running locally
-  // static const String BASE_URL = "http://YOUR_IP:5000";
-
-  List<String> prompts = [
-    "Wave your hand",
-    "Show your index finger",
-    "Close your fist",
-    "Open your hand",
-    "Show peace sign (two fingers)",
-  ];
-
+class _GesturePageState extends State<GesturePage> {
   CameraController? controller;
+  String gesture = "No gesture detected";
+  String expectedPrompt = "";
   bool isProcessing = false;
-  String currentPrompt = "";
-  String detectionResult = "";
-  Random random = Random();
-  bool detected = false;
-  final authService = AuthService();
+  bool isDetected = false;
+  String? errorMessage;
 
-  int frameSkipCounter = 0;
-  int detectionCount = 0;
-  static const int requiredDetections = 3;
-  static const int frameSkip = 5;
-  bool serverConnected = false;
+  // Throttling variables
+  DateTime lastProcessTime = DateTime.now();
+  static const Duration processingInterval = Duration(milliseconds: 500);
 
   @override
   void initState() {
     super.initState();
-    _checkServerConnection(); // Test connection first
-    _newPrompt();
-    _initializeCamera();
+    initCamera();
+    getNewPrompt();
   }
 
-  void _newPrompt() {
-    setState(() {
-      currentPrompt = prompts[random.nextInt(prompts.length)];
-      detectionResult = serverConnected ? "Waiting..." : "Server not connected";
-      detectionCount = 0;
-    });
-  }
-
-  // Test all server endpoints to see what's available
-  Future<void> _checkServerConnection() async {
-    List<String> endpointsToTest = [
-      "/",
-      "/health",
-      "/detect",
-      "/test_detector",
-      "/new_prompt",
-    ];
-
-    setState(() => detectionResult = "Testing server connection...");
-
-    for (String endpoint in endpointsToTest) {
-      try {
-        print("Testing endpoint: $BASE_URL$endpoint");
-
-        final response = await http
-            .get(
-              Uri.parse("$BASE_URL$endpoint"),
-              headers: {
-                "ngrok-skip-browser-warning": "true",
-                "User-Agent": "Flutter App",
-              },
-            )
-            .timeout(const Duration(seconds: 10));
-
-        print("$endpoint: ${response.statusCode}");
-
-        if (response.statusCode == 200) {
-          print("$endpoint response: ${response.body}");
-          serverConnected = true;
-          setState(() => detectionResult = "Server connected ✅");
-          break;
-        }
-      } catch (e) {
-        print("$endpoint error: $e");
-      }
-    }
-
-    if (!serverConnected) {
-      setState(
-        () => detectionResult = "❌ Cannot connect to server. Check URL.",
-      );
-    }
-  }
-
-  // Test POST request to /detect endpoint specifically
-  Future<void> _testDetectEndpoint() async {
-    try {
-      setState(() => detectionResult = "Testing /detect endpoint...");
-
-      // Create a small test image (1x1 white pixel)
-      final testImage = img.Image(width: 1, height: 1);
-      img.fill(testImage, color: img.ColorRgb8(255, 255, 255));
-      final testImageBytes = img.encodeJpg(testImage);
-      final testBase64 = base64Encode(testImageBytes);
-
-      final response = await http
-          .post(
-            Uri.parse("$BASE_URL/detect"),
-            headers: {
-              "Content-Type": "application/json",
-              "ngrok-skip-browser-warning": "true",
-              "User-Agent": "Flutter App",
-            },
-            body: jsonEncode({"image": testBase64}),
-          )
-          .timeout(const Duration(seconds: 10));
-
-      print("POST /detect status: ${response.statusCode}");
-      print("POST /detect response: ${response.body}");
-
-      if (response.statusCode == 200) {
-        setState(() => detectionResult = "/detect endpoint working ✅");
-        serverConnected = true;
-      } else {
-        setState(
-          () => detectionResult = "/detect failed: ${response.statusCode}",
-        );
-      }
-    } catch (e) {
-      setState(() => detectionResult = "/detect error: $e");
-      print("Detect endpoint test error: $e");
-    }
-  }
-
-  Future<void> _initializeCamera() async {
+  Future<void> initCamera() async {
     try {
       final cameras = await availableCameras();
-
-      final frontCamera = cameras.firstWhere(
-        (cam) => cam.lensDirection == CameraLensDirection.front,
-        orElse: () => cameras.first,
-      );
+      if (cameras.isEmpty) {
+        setState(() {
+          errorMessage = "No cameras available";
+        });
+        return;
+      }
 
       controller = CameraController(
-        frontCamera,
-        ResolutionPreset.low, // Use low resolution for debugging
+        cameras.first,
+        ResolutionPreset.medium, // Better quality than low
         enableAudio: false,
       );
 
       await controller!.initialize();
 
-      if (!mounted) return;
+      if (mounted) {
+        setState(() {});
 
-      setState(() {});
+        // Start streaming frames with throttling
+        controller!.startImageStream((CameraImage image) async {
+          final now = DateTime.now();
 
-      // Only start image stream if server is connected
-      if (serverConnected) {
-        controller!.startImageStream((image) async {
-          frameSkipCounter++;
-          if (frameSkipCounter < frameSkip) return;
-          frameSkipCounter = 0;
+          // Throttle processing to avoid overwhelming the server
+          if (now.difference(lastProcessTime) < processingInterval ||
+              isProcessing) {
+            return;
+          }
 
-          if (isProcessing || detected) return;
-
-          isProcessing = true;
-          await _sendFrame(image);
-          isProcessing = false;
+          lastProcessTime = now;
+          await processFrame(image);
         });
       }
     } catch (e) {
-      setState(() => detectionResult = "Camera error: $e");
-      print("Camera initialization error: $e");
+      setState(() {
+        errorMessage = "Failed to initialize camera: $e";
+      });
     }
   }
 
-  Future<void> _sendFrame(CameraImage image) async {
-    if (!serverConnected) {
-      setState(() => detectionResult = "Server not connected");
-      return;
-    }
+  Future<void> processFrame(CameraImage image) async {
+    if (isProcessing) return;
+
+    setState(() {
+      isProcessing = true;
+    });
 
     try {
-      final rgbBytes = _convertYUV420ToRGB(image);
+      // Convert CameraImage to JPEG bytes
+      final bytes = await convertCameraImageToJpeg(image);
 
-      final rgbImage = img.Image.fromBytes(
-        width: image.width,
-        height: image.height,
-        bytes: rgbBytes.buffer,
-        order: img.ChannelOrder.rgb,
+      if (bytes == null) {
+        setState(() {
+          errorMessage = "Failed to convert image";
+          isProcessing = false;
+        });
+        return;
+      }
+
+      // Send to Flask server
+      final uri = Uri.parse("https://b28cacd6926a.ngrok-free.app/detect");
+      final request = http.MultipartRequest("POST", uri);
+
+      // Add the image file
+      request.files.add(
+        http.MultipartFile.fromBytes("frame", bytes, filename: "frame.jpg"),
       );
 
-      // Use smaller image for better performance
-      final resized = img.copyResize(rgbImage, width: 224, height: 224);
-      final jpegBytes = img.encodeJpg(resized, quality: 70);
-      final base64Image = base64Encode(jpegBytes);
+      // Add expected prompt if available
+      if (expectedPrompt.isNotEmpty) {
+        request.fields['expected_prompt'] = expectedPrompt;
+      }
 
-      print("Sending frame to $BASE_URL/detect");
+      final response = await request.send();
+      final responseString = await response.stream.bytesToString();
 
-      final response = await http
-          .post(
-            Uri.parse("$BASE_URL/detect"),
-            headers: {
-              "Content-Type": "application/json",
-              "ngrok-skip-browser-warning": "true",
-              "User-Agent": "Flutter App",
-            },
-            body: jsonEncode({"image": base64Image}),
-          )
-          .timeout(const Duration(seconds: 8));
+      if (response.statusCode == 200) {
+        final data = jsonDecode(responseString);
 
-      print("Response status: ${response.statusCode}");
+        if (mounted) {
+          setState(() {
+            if (data['success'] == true && data['result'] != null) {
+              final result = data['result'];
+              gesture = result['gesture'] ?? 'Unknown';
+              isDetected = result['detected'] ?? false;
+              if (isDetected) {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => ProfileUser()),
+                );
+                return;
+              }
+              errorMessage = null;
+            } else {
+              gesture = "Processing error";
+              isDetected = false;
+              errorMessage = data['error'] ?? 'Unknown error';
+            }
+            isProcessing = false;
+          });
+        }
+      } else {
+        if (mounted) {
+          setState(() {
+            gesture = "Server error";
+            isDetected = false;
+            errorMessage = "Server returned ${response.statusCode}";
+            isProcessing = false;
+          });
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          gesture = "Connection error";
+          isDetected = false;
+          errorMessage = "Failed to connect: $e";
+          isProcessing = false;
+        });
+      }
+    }
+  }
+
+  Future<Uint8List?> convertCameraImageToJpeg(CameraImage cameraImage) async {
+    try {
+      // Handle different image formats
+      if (cameraImage.format.group == ImageFormatGroup.yuv420) {
+        return convertYUV420ToJpeg(cameraImage);
+      } else if (cameraImage.format.group == ImageFormatGroup.bgra8888) {
+        return convertBGRA8888ToJpeg(cameraImage);
+      } else {
+        print('Unsupported image format: ${cameraImage.format.group}');
+        return null;
+      }
+    } catch (e) {
+      print('Error converting image: $e');
+      return null;
+    }
+  }
+
+  Uint8List? convertYUV420ToJpeg(CameraImage cameraImage) {
+    try {
+      final int width = cameraImage.width;
+      final int height = cameraImage.height;
+
+      final int yRowStride = cameraImage.planes[0].bytesPerRow;
+      final int uvRowStride = cameraImage.planes[1].bytesPerRow;
+      final int uvPixelStride = cameraImage.planes[1].bytesPerPixel ?? 1;
+
+      final Uint8List yPlane = cameraImage.planes[0].bytes;
+      final Uint8List uPlane = cameraImage.planes[1].bytes;
+      final Uint8List vPlane = cameraImage.planes[2].bytes;
+
+      final img.Image image = img.Image(width: width, height: height);
+
+      for (int y = 0; y < height; y++) {
+        for (int x = 0; x < width; x++) {
+          final int yIndex = y * yRowStride + x;
+          final int uvIndex = (y ~/ 2) * uvRowStride + (x ~/ 2) * uvPixelStride;
+
+          final int yValue = yPlane[yIndex];
+          final int uValue = uPlane[uvIndex];
+          final int vValue = vPlane[uvIndex];
+
+          // YUV to RGB conversion
+          final int r = (yValue + 1.370705 * (vValue - 128)).round().clamp(
+            0,
+            255,
+          );
+          final int g =
+              (yValue - 0.337633 * (uValue - 128) - 0.698001 * (vValue - 128))
+                  .round()
+                  .clamp(0, 255);
+          final int b = (yValue + 1.732446 * (uValue - 128)).round().clamp(
+            0,
+            255,
+          );
+
+          image.setPixelRgba(x, y, r, g, b, 255);
+        }
+      }
+
+      return Uint8List.fromList(img.encodeJpg(image, quality: 85));
+    } catch (e) {
+      print('Error in YUV420 conversion: $e');
+      return null;
+    }
+  }
+
+  Uint8List? convertBGRA8888ToJpeg(CameraImage cameraImage) {
+    try {
+      final int width = cameraImage.width;
+      final int height = cameraImage.height;
+      final Uint8List bytes = cameraImage.planes[0].bytes;
+
+      // Create image manually from BGRA bytes
+      final img.Image image = img.Image(width: width, height: height);
+
+      for (int y = 0; y < height; y++) {
+        for (int x = 0; x < width; x++) {
+          final int index = (y * width + x) * 4;
+          if (index + 3 < bytes.length) {
+            final int b = bytes[index];
+            final int g = bytes[index + 1];
+            final int r = bytes[index + 2];
+            final int a = bytes[index + 3];
+
+            image.setPixelRgba(x, y, r, g, b, a);
+          }
+        }
+      }
+
+      return Uint8List.fromList(img.encodeJpg(image, quality: 85));
+    } catch (e) {
+      print('Error in BGRA8888 conversion: $e');
+      return null;
+    }
+  }
+
+  Future<void> getNewPrompt() async {
+    try {
+      final response = await http.get(
+        Uri.parse("https://9b526e604e83.ngrok-free.app/new_prompt"),
+      );
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        print("Response data: $data");
-
-        if (data.containsKey("error")) {
-          setState(() => detectionResult = "Server error: ${data["error"]}");
-          return;
-        }
-
-        final bool gestureDetected = data["detected"] == true;
-        final double confidence = (data["confidence"] ?? 0.0).toDouble();
-        final int handsFound = data["hands_found"] ?? 0;
-
-        if (gestureDetected) {
-          detectionCount++;
-          setState(() {
-            detectionResult =
-                "Detected! ($detectionCount/$requiredDetections) ✅";
-          });
-
-          if (detectionCount >= requiredDetections && !detected) {
-            detected = true;
-            authService.addVerification(detected);
-            if (mounted) {
-              Navigator.pushReplacement(
-                context,
-                MaterialPageRoute(builder: (_) => const ProfileUser()),
-              );
-            }
-          }
-        } else {
-          detectionCount = 0;
-
-          if (handsFound == 0) {
-            setState(() => detectionResult = "Show your hand 👋");
-          } else {
-            setState(() => detectionResult = "Try the gesture: $currentPrompt");
-          }
-        }
-      } else if (response.statusCode == 404) {
-        setState(() => detectionResult = "❌ /detect endpoint not found");
-        serverConnected = false;
-      } else {
-        setState(
-          () => detectionResult = "Server error: ${response.statusCode}",
-        );
-        print("HTTP Error: ${response.statusCode} - ${response.body}");
+        setState(() {
+          expectedPrompt = data['new_prompt'] ?? '';
+          isDetected = false; // Reset detection status
+        });
       }
     } catch (e) {
-      setState(() => detectionResult = "Network error: $e");
-      print("Frame processing error: $e");
+      print('Failed to get new prompt: $e');
     }
-  }
-
-  Uint8List _convertYUV420ToRGB(CameraImage image) {
-    final width = image.width;
-    final height = image.height;
-    final yPlane = image.planes[0];
-    final uPlane = image.planes[1];
-    final vPlane = image.planes[2];
-
-    final rgb = Uint8List(width * height * 3);
-
-    final uvRowStride = uPlane.bytesPerRow;
-    final uvPixelStride = uPlane.bytesPerPixel!;
-
-    for (int y = 0; y < height; y++) {
-      for (int x = 0; x < width; x++) {
-        final uvIndex = uvPixelStride * (x ~/ 2) + uvRowStride * (y ~/ 2);
-
-        final yp = yPlane.bytes[y * yPlane.bytesPerRow + x];
-        final up = uPlane.bytes[uvIndex];
-        final vp = vPlane.bytes[uvIndex];
-
-        int r = (yp + 1.402 * (vp - 128)).round();
-        int g = (yp - 0.344136 * (up - 128) - 0.714136 * (vp - 128)).round();
-        int b = (yp + 1.772 * (up - 128)).round();
-
-        r = r.clamp(0, 255);
-        g = g.clamp(0, 255);
-        b = b.clamp(0, 255);
-
-        final index = (y * width + x) * 3;
-        rgb[index] = r;
-        rgb[index + 1] = g;
-        rgb[index + 2] = b;
-      }
-    }
-
-    return rgb;
-  }
-
-  @override
-  void dispose() {
-    controller?.stopImageStream();
-    controller?.dispose();
-    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    if (controller == null || !controller!.value.isInitialized) {
-      return Scaffold(
-        body: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const CircularProgressIndicator(),
-              const SizedBox(height: 20),
-              Text(detectionResult),
-              const SizedBox(height: 20),
-              ElevatedButton(
-                onPressed: _checkServerConnection,
-                child: const Text("Test Server"),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-
     return Scaffold(
       appBar: AppBar(
-        title: const Text("Verification Page"),
-        backgroundColor: serverConnected ? Colors.green : Colors.red,
+        title: const Text("Gesture Detection"),
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
-            onPressed: _checkServerConnection,
-            tooltip: "Test Connection",
+            onPressed: getNewPrompt,
+            tooltip: 'Get New Prompt',
           ),
         ],
       ),
       body: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          // Server status indicator
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(12),
-            color: serverConnected
-                ? Colors.green.shade100
-                : Colors.red.shade100,
-            child: Text(
-              serverConnected
-                  ? "🟢 Server Connected"
-                  : "🔴 Server Disconnected",
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                color: serverConnected
-                    ? Colors.green.shade800
-                    : Colors.red.shade800,
-              ),
-            ),
-          ),
-
+          // Camera preview
           Expanded(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                AspectRatio(
-                  aspectRatio: controller!.value.aspectRatio,
-                  child: CameraPreview(controller!),
-                ),
-                const SizedBox(height: 20),
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  margin: const EdgeInsets.symmetric(horizontal: 20),
-                  decoration: BoxDecoration(
-                    color: Colors.blue.shade50,
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: Colors.blue.shade200),
-                  ),
-                  child: Column(
-                    children: [
-                      const Text(
-                        "Perform this gesture:",
-                        style: TextStyle(fontSize: 16),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        currentPrompt,
-                        style: const TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 20),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 20,
-                    vertical: 10,
-                  ),
-                  child: Text(
-                    detectionResult,
-                    style: TextStyle(
-                      fontSize: 16,
-                      color: detectionResult.contains("✅")
-                          ? Colors.green
-                          : detectionResult.contains("❌")
-                          ? Colors.red
-                          : Colors.orange,
-                      fontWeight: FontWeight.w500,
+            flex: 3,
+            child: Container(
+              width: double.infinity,
+              child: controller != null && controller!.value.isInitialized
+                  ? CameraPreview(controller!)
+                  : Center(
+                      child: errorMessage != null
+                          ? Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                const Icon(
+                                  Icons.error,
+                                  size: 64,
+                                  color: Colors.red,
+                                ),
+                                const SizedBox(height: 16),
+                                Text(
+                                  errorMessage!,
+                                  textAlign: TextAlign.center,
+                                  style: const TextStyle(color: Colors.red),
+                                ),
+                              ],
+                            )
+                          : const CircularProgressIndicator(),
                     ),
-                    textAlign: TextAlign.center,
-                  ),
-                ),
-              ],
             ),
           ),
 
-          // Control buttons
-          Container(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: [
-                    ElevatedButton(
-                      onPressed: _newPrompt,
-                      child: const Text("New Prompt"),
-                    ),
-                    ElevatedButton(
-                      onPressed: _checkServerConnection,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.blue,
-                        foregroundColor: Colors.white,
+          // Status and results section
+          Expanded(
+            flex: 2,
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(16),
+              color: Colors.grey[100],
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  // Current prompt
+                  if (expectedPrompt.isNotEmpty)
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.blue[50],
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.blue[200]!),
                       ),
-                      child: const Text("Test Server"),
+                      child: Column(
+                        children: [
+                          const Text(
+                            "Try this gesture:",
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            expectedPrompt,
+                            style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.blue,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        ],
+                      ),
                     ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                ElevatedButton(
-                  onPressed: _testDetectEndpoint,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.green,
-                    foregroundColor: Colors.white,
+
+                  const SizedBox(height: 16),
+
+                  // Detection result
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: isDetected ? Colors.green[50] : Colors.orange[50],
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: isDetected
+                            ? Colors.green[200]!
+                            : Colors.orange[200]!,
+                      ),
+                    ),
+                    child: Column(
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              isDetected
+                                  ? Icons.check_circle
+                                  : Icons.radio_button_unchecked,
+                              color: isDetected ? Colors.green : Colors.orange,
+                              size: 20,
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              isDetected ? "Detected!" : "Keep trying...",
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w500,
+                                color: isDetected
+                                    ? Colors.green[700]
+                                    : Colors.orange[700],
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          "Current: $gesture",
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ],
+                    ),
                   ),
-                  child: const Text("Test /detect Endpoint"),
-                ),
-              ],
+
+                  const SizedBox(height: 16),
+
+                  // Processing indicator
+                  if (isProcessing)
+                    const Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                        SizedBox(width: 8),
+                        Text("Processing..."),
+                      ],
+                    ),
+
+                  // Error message
+                  if (errorMessage != null && !isProcessing)
+                    Text(
+                      "Error: $errorMessage",
+                      style: const TextStyle(color: Colors.red, fontSize: 12),
+                      textAlign: TextAlign.center,
+                    ),
+                ],
+              ),
             ),
           ),
         ],
       ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: getNewPrompt,
+        tooltip: 'New Challenge',
+        child: const Icon(Icons.refresh),
+      ),
     );
+  }
+
+  @override
+  void dispose() {
+    controller?.dispose();
+    super.dispose();
   }
 }

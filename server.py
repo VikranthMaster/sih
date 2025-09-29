@@ -16,6 +16,7 @@ app = Flask(__name__)
 SUPABASE_URL="https://dbxaqntkbcbypbwkuwti.supabase.co"
 SUPABASE_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRieGFxbnRrYmNieXBid2t1d3RpIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1ODI5MTY3MiwiZXhwIjoyMDczODY3NjcyfQ.372-VGu6FSPT_S7czhZGm2yRZmKo6lYSlp5R_Nmmd68"
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+
 # Initialize detector
 detector = HandGestureDetector()
 
@@ -79,133 +80,66 @@ def allowed_file(filename):
 def home():
     return jsonify({"go":"Working"}), 202
 
-@app.route('/detect', methods=['POST'])
+@app.route("/detect", methods=["POST"])
 def detect():
-    """Hand gesture detection endpoint."""
     try:
-        # Check if request has JSON data
-        if not request.is_json:
-            return jsonify({"error": "Request must contain JSON data"}), 400
-            
-        # Check if image data is provided
-        if 'image' not in request.json:
-            return jsonify({"error": "No image data provided"}), 400
-            
-        # Get base64 image data
-        image_data = request.json['image']
-        
-        if not image_data:
-            return jsonify({"error": "Empty image data"}), 400
-            
-        try:
-            # Decode base64 image
-            image_bytes = base64.b64decode(image_data)
-            nparr = np.frombuffer(image_bytes, np.uint8)
-            frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-            
-            if frame is None:
-                return jsonify({"error": "Could not decode image data"}), 400
-                
-        except Exception as decode_error:
-            return jsonify({"error": f"Image decoding failed: {str(decode_error)}"}), 400
-        
-        # Process the frame with gesture detector
-        result = detector.process_frame(frame)
-        
-        # Add debug info if there's an error
-        if "error" in result:
-            print(f"Detection error: {result['error']}")
-            
-        # Return success response
-        return jsonify(result), 200
-        
-    except Exception as e:
-        error_msg = f"Detection failed: {str(e)}"
-        print(f"Server error: {error_msg}")
-        return jsonify({
-            "error": error_msg,
-            "gesture": detector.current_prompt if detector else "unknown",
-            "detected": False
-        }), 500
+        # Check if frame is in request
+        if "frame" not in request.files:
+            return jsonify({"error": "No frame uploaded"}), 400
 
-@app.route('/detect_debug', methods=['POST'])
-def detect_debug():
-    """Debug version of detect endpoint with more detailed logging."""
-    try:
-        print("=== DEBUG: /detect_debug called ===")
-        
-        # Log request info
-        print(f"Content-Type: {request.headers.get('Content-Type')}")
-        print(f"Request is JSON: {request.is_json}")
-        
-        if not request.is_json:
-            return jsonify({"error": "Request must contain JSON data"}), 400
-            
-        # Check image data
-        if 'image' not in request.json:
-            print("ERROR: No 'image' key in request")
-            return jsonify({"error": "No image data provided"}), 400
-            
-        image_data = request.json['image']
-        print(f"Image data length: {len(image_data) if image_data else 0}")
-        
-        if not image_data:
-            return jsonify({"error": "Empty image data"}), 400
-        
-        # Decode and process
-        try:
-            image_bytes = base64.b64decode(image_data)
-            print(f"Decoded bytes length: {len(image_bytes)}")
-            
-            nparr = np.frombuffer(image_bytes, np.uint8)
-            frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-            
-            if frame is None:
-                print("ERROR: cv2.imdecode returned None")
-                return jsonify({"error": "Could not decode image"}), 400
-                
-            print(f"Frame shape: {frame.shape}")
-            
-        except Exception as decode_error:
-            print(f"Decode error: {decode_error}")
-            return jsonify({"error": f"Decoding failed: {str(decode_error)}"}), 400
-        
-        # Process with detector
-        print(f"Current prompt: {detector.current_prompt}")
-        result = detector.process_frame(frame)
-        print(f"Detection result: {result}")
-        
-        return jsonify(result), 200
-        
-    except Exception as e:
-        error_msg = f"Debug detection failed: {str(e)}"
-        print(f"DEBUG ERROR: {error_msg}")
-        return jsonify({
-            "error": error_msg,
-            "detected": False
-        }), 500
+        # Read and validate image file
+        file = request.files["frame"]
+        if not file or file.filename == '':
+            return jsonify({"error": "Empty file uploaded"}), 400
 
-@app.route('/test_detector', methods=['GET'])
-def test_detector():
-    """Test if the gesture detector is working."""
-    try:
-        # Create a simple test image (white background)
-        test_frame = np.ones((480, 640, 3), dtype=np.uint8) * 255
+        # Read image data
+        file_data = file.read()
+        if len(file_data) == 0:
+            return jsonify({"error": "Empty file data"}), 400
+
+        # Convert to numpy array
+        np_img = np.frombuffer(file_data, np.uint8)
+        if np_img.size == 0:
+            return jsonify({"error": "Invalid image data"}), 400
+
+        # Decode image
+        frame = cv2.imdecode(np_img, cv2.IMREAD_COLOR)
         
-        # Process with detector
-        result = detector.process_frame(test_frame)
-        
+        # Check if decoding was successful
+        if frame is None or frame.size == 0:
+            return jsonify({"error": "Failed to decode image. Please check image format."}), 400
+
+        # Additional validation - check if frame has proper dimensions
+        if len(frame.shape) != 3 or frame.shape[2] != 3:
+            return jsonify({"error": "Invalid image format. Expected RGB/BGR image."}), 400
+
+        # Get expected prompt if provided
+        expected_prompt = request.form.get('expected_prompt', None)
+
+        # Process frame with error handling
+        result = detector.process_frame(frame, expected_prompt)
+
         return jsonify({
-            "detector_status": "working",
-            "current_prompt": detector.current_prompt,
-            "test_result": result,
-            "available_prompts": detector.prompts
-        }), 200
-        
+            "success": True,
+            "result": result,
+            "frame_info": {
+                "width": frame.shape[1],
+                "height": frame.shape[0],
+                "channels": frame.shape[2]
+            }
+        })
+
+    except cv2.error as e:
+        return jsonify({
+            "success": False,
+            "error": f"OpenCV error: {str(e)}",
+            "suggestion": "Please check if the uploaded image is valid and not corrupted."
+        }), 400
+    
     except Exception as e:
         return jsonify({
-            "detector_status": "error",
-            "error": str(e)
+            "success": False,
+            "error": f"Processing error: {str(e)}"
         }), 500
 
 @app.route('/new_prompt', methods=['GET'])
@@ -222,9 +156,13 @@ def pushups():
     """Push-up counting endpoint - accepts video URL from Supabase storage."""
     temp_filepath = None
     try:
+        user_id = None
+        
         # Check for video URL in JSON payload
         if request.is_json and 'video_url' in request.json:
             video_url = request.json['video_url']
+            user_id = request.json.get('user_id')
+            
             if not video_url:
                 return jsonify({"error": "Empty video URL provided"}), 400
                 
@@ -234,6 +172,7 @@ def pushups():
         # Fallback: Check for direct file upload (for backward compatibility)
         elif 'video' in request.files:
             file = request.files['video']
+            user_id = request.form.get('user_id')
             
             if file.filename == '':
                 return jsonify({"error": "No video file selected"}), 400
@@ -253,14 +192,30 @@ def pushups():
 
         # Process the video and count push-ups
         result = pushup(temp_filepath)
+        pushup_count = result.get("pushups", 0)
         
-        # update = supabase.table("profiles").update({"pushups": int(result['pushups'])}).eq("full_name", ).execute()
+        # Update database if user_id is provided
+        if user_id and pushup_count > 0:
+            try:
+                update_result = supabase.table("profiles").update({
+                    "pushups": int(pushup_count)
+                }).eq("id", user_id).execute()
+                
+                if update_result.data:
+                    result["database_updated"] = True
+                    result["updated_user_id"] = user_id
+                else:
+                    result["database_updated"] = False
+                    result["database_error"] = "User not found or update failed"
+            except Exception as db_error:
+                result["database_updated"] = False
+                result["database_error"] = str(db_error)
         
         # Return result with consistent format for Flutter app
         return jsonify({
             "success": True,
-            "count": result.get("pushups", 0),
-            "message": f"Analysis complete! Detected {result.get('pushups', 0)} push-ups.",
+            "count": pushup_count,
+            "message": f"Analysis complete! Detected {pushup_count} push-ups.",
             "details": result
         })
         
@@ -283,9 +238,13 @@ def squats():
     """Squat counting endpoint - accepts video URL from Supabase storage."""
     temp_filepath = None
     try:
+        user_id = None
+        
         # Check for video URL in JSON payload
         if request.is_json and 'video_url' in request.json:
             video_url = request.json['video_url']
+            user_id = request.json.get('user_id')
+            
             if not video_url:
                 return jsonify({"error": "Empty video URL provided"}), 400
                 
@@ -295,6 +254,7 @@ def squats():
         # Fallback: Check for direct file upload (for backward compatibility)
         elif 'video' in request.files:
             file = request.files['video']
+            user_id = request.form.get('user_id')
             
             if file.filename == '':
                 return jsonify({"error": "No video file selected"}), 400
@@ -314,13 +274,30 @@ def squats():
 
         # Process the video and count squats
         result = squatsdoing(temp_filepath)
+        squat_count = result.get("squats", 0)
         
+        # Update database if user_id is provided
+        if user_id and squat_count > 0:
+            try:
+                update_result = supabase.table("profiles").update({
+                    "squats": int(squat_count)
+                }).eq("id", user_id).execute()
+                
+                if update_result.data:
+                    result["database_updated"] = True
+                    result["updated_user_id"] = user_id
+                else:
+                    result["database_updated"] = False
+                    result["database_error"] = "User not found or update failed"
+            except Exception as db_error:
+                result["database_updated"] = False
+                result["database_error"] = str(db_error)
         
         # Return result with consistent format for Flutter app
         return jsonify({
             "success": True,
-            "count": result.get("squats", 0),
-            "message": f"Analysis complete! Detected {result.get('squats', 0)} squats.",
+            "count": squat_count,
+            "message": f"Analysis complete! Detected {squat_count} squats.",
             "details": result
         })
         
@@ -344,11 +321,13 @@ def analyze_video():
     temp_filepath = None
     try:
         exercise_type = 'pushups'  # Default
+        user_id = None
         
         # Check for video URL in JSON payload
         if request.is_json and 'video_url' in request.json:
             video_url = request.json['video_url']
             exercise_type = request.json.get('exercise_type', 'pushups').lower()
+            user_id = request.json.get('user_id')
             
             if not video_url:
                 return jsonify({"error": "Empty video URL provided"}), 400
@@ -362,6 +341,7 @@ def analyze_video():
         # Fallback: Check for direct file upload (for backward compatibility)
         elif 'video' in request.files:
             exercise_type = request.form.get('exercise_type', 'pushups').lower()
+            user_id = request.form.get('user_id')
             
             if exercise_type not in ['pushups', 'squats']:
                 return jsonify({"error": "Invalid exercise type. Use 'pushups' or 'squats'"}), 400
@@ -388,9 +368,28 @@ def analyze_video():
         if exercise_type == 'pushups':
             result = pushup(temp_filepath)
             count = result.get("pushups", 0)
+            db_field = "pushups"
         else:  # squats
             result = squatsdoing(temp_filepath)
             count = result.get("squats", 0)
+            db_field = "squats"
+        
+        # Update database if user_id is provided
+        if user_id and count > 0:
+            try:
+                update_result = supabase.table("profiles").update({
+                    db_field: int(count)
+                }).eq("id", user_id).execute()
+                
+                if update_result.data:
+                    result["database_updated"] = True
+                    result["updated_user_id"] = user_id
+                else:
+                    result["database_updated"] = False
+                    result["database_error"] = "User not found or update failed"
+            except Exception as db_error:
+                result["database_updated"] = False
+                result["database_error"] = str(db_error)
             
         # Return comprehensive result
         return jsonify({
@@ -425,7 +424,7 @@ def health_check():
             "pushups": "/pushups - POST with video_url (JSON) or video file",
             "squats": "/squats - POST with video_url (JSON) or video file", 
             "analyze": "/analyze - POST with video_url and exercise_type (JSON) or video file",
-            "detect": "/detect - POST with base64 image",
+            "detect": "/detect - POST with image file",
             "new_prompt": "/new_prompt - GET"
         },
         "supported_methods": {

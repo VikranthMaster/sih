@@ -253,49 +253,49 @@ class _ProfileUserState extends State<ProfileUser> {
     required Color color,
     required VoidCallback onTap,
   }) {
-    return Expanded(
-      child: GestureDetector(
-        onTap: onTap,
-        child: Container(
-          height: 120,
-          margin: const EdgeInsets.symmetric(horizontal: 8),
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [color.withOpacity(0.8), color],
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        height: 120,
+        margin: const EdgeInsets.symmetric(horizontal: 8),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [color.withOpacity(0.8), color],
+          ),
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+              color: color.withOpacity(0.3),
+              blurRadius: 8,
+              offset: const Offset(0, 4),
             ),
-            borderRadius: BorderRadius.circular(16),
-            boxShadow: [
-              BoxShadow(
-                color: color.withOpacity(0.3),
-                blurRadius: 8,
-                offset: const Offset(0, 4),
+          ],
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center, // centers vertically
+          crossAxisAlignment: CrossAxisAlignment.center, // centers horizontally
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.2),
+                borderRadius: BorderRadius.circular(12),
               ),
-            ],
-          ),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(icon, size: 32, color: Colors.white),
+              child: Icon(icon, size: 32, color: Colors.white),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              title,
+              textAlign: TextAlign.center, // ✅ centers multi-line text
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
               ),
-              const SizedBox(height: 12),
-              Text(
-                title,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
@@ -351,7 +351,7 @@ class _ProfileUserState extends State<ProfileUser> {
           ),
         ),
         title: const Text(
-          'Fitness Tracker',
+          'Game Changer',
           style: TextStyle(
             fontWeight: FontWeight.bold,
             color: Colors.deepPurple,
@@ -518,53 +518,93 @@ class _ProfileUserState extends State<ProfileUser> {
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 16),
                       child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                        crossAxisAlignment: CrossAxisAlignment.center,
                         children: [
                           const Text(
                             'Choose Your Exercise',
                             style: TextStyle(
                               fontSize: 20,
                               fontWeight: FontWeight.bold,
-                              color: Colors.deepPurple,
+                              color: Colors.blue,
                             ),
                           ),
                           const SizedBox(height: 16),
-                          Row(
+
+                          // ✅ GridView for 2 items per row
+                          GridView.count(
+                            shrinkWrap:
+                                true, // so it works inside SingleChildScrollView
+                            physics:
+                                const NeverScrollableScrollPhysics(), // disable inner scroll
+                            crossAxisCount: 2, // 2 per row
+                            crossAxisSpacing: 12,
+                            mainAxisSpacing: 12,
+                            childAspectRatio: 1.2, // adjust size ratio
+
                             children: [
                               _buildExerciseButton(
                                 title: 'Push Ups',
                                 icon: Icons.fitness_center,
-                                color: Colors.orange,
-                                onTap: () {
-                                  // Navigate to PushUps page
-                                  Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (context) => const Pushup(),
-                                    ),
-                                  );
-                                  // ScaffoldMessenger.of(context).showSnackBar(
-                                  //   const SnackBar(
-                                  //     content: Text(
-                                  //       'Push Ups page - Coming Soon!',
-                                  //     ),
-                                  //   ),
-                                  // );
-                                },
+                                color: Colors.blue,
+                                onTap: () => Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) => const Pushup(),
+                                  ),
+                                ),
                               ),
                               _buildExerciseButton(
                                 title: 'Squats',
                                 icon: Icons.accessibility_new,
                                 color: Colors.blue,
-                                onTap: () {
-                                  // Navigate to Squats page
-                                  Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (context) => const Squats(),
-                                    ),
-                                  );
-                                },
+                                onTap: () => Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) => const Squats(),
+                                  ),
+                                ),
+                              ),
+                              _buildExerciseButton(
+                                title: 'Standing Vertical Jump',
+                                icon: Icons.accessibility_new,
+                                color: Colors.blue,
+                                onTap: () {},
+                              ),
+                              _buildExerciseButton(
+                                title: 'Standing Broad Jump',
+                                icon: Icons.accessibility_new,
+                                color: Colors.blue,
+                                onTap: () {},
+                              ),
+                              _buildExerciseButton(
+                                title: 'Medicine Ball Throw',
+                                icon: Icons.sports,
+                                color: Colors.blue,
+                                onTap: () {},
+                              ),
+                              _buildExerciseButton(
+                                title: '30mts Standing Start',
+                                icon: Icons.directions_run,
+                                color: Colors.blue,
+                                onTap: () {},
+                              ),
+                              _buildExerciseButton(
+                                title: '4x10mts Shuttle Run',
+                                icon: Icons.run_circle,
+                                color: Colors.blue,
+                                onTap: () {},
+                              ),
+                              _buildExerciseButton(
+                                title: '800m Run (Less than 12yrs)',
+                                icon: Icons.directions_walk,
+                                color: Colors.blue,
+                                onTap: () {},
+                              ),
+                              _buildExerciseButton(
+                                title: '1.6km Run (Above 12yrs)',
+                                icon: Icons.directions_walk,
+                                color: Colors.blue,
+                                onTap: () {},
                               ),
                             ],
                           ),

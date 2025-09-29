@@ -67,7 +67,7 @@ class _ProfilePageState extends State<ProfilePage> {
               onPressed: () {
                 Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (context) => const Verification()),
+                  MaterialPageRoute(builder: (context) => const GesturePage()),
                 );
               },
               child: Text("Primary Test", style: TextStyle(fontSize: 20)),
